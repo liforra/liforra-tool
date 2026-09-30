@@ -1,0 +1,25 @@
+# Real secrets — copy the .example files and fill in real values locally.
+internal/config/config.go
+internal/config/buildkey.txt
+internal/config/downloadtoken.txt
+
+# Dev-only scratch tools with hardcoded live GLPI credentials, and the live
+# token dump they produce — never meant to leave this machine.
+/TOKEN_USER_REMOVES_WHEN_DONE.secret
+*.secret
+/scripts/login-and-save-token.html
+/scripts/test-create-device.html
+
+# Build server data (published versions) — lives on the server, not the repo.
+cmd/buildserver/data/
+
+/build/bin/
+/cmd/installer/build/
+/cmd/installer/frontend/
+/cmd/installer/payload/*.exe
+/frontend/dist/
+/frontend/wailsjs/
+node_modules/
+
+# Claude Code's own local session/tool state — not project content.
+/.claude/

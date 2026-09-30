@@ -1,0 +1,4 @@
+# Auto-imported by /etc/caddy/Caddyfile via: import /opt/services/services/*/Caddyfile
+lumatool.liforra.de {
+	reverse_proxy 127.0.0.1:8834
+}

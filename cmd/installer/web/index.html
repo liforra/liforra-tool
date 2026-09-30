@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>liforra-tool installieren</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="titlebar" style="--wails-draggable:drag">
+      <span class="titlebar-tag">liforra-tool installieren</span>
+      <div class="titlebar-controls" style="--wails-draggable:no-drag">
+        <button class="titlebar-btn" id="btn-minimise" aria-label="Minimieren">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
+        </button>
+        <button class="titlebar-btn titlebar-btn--close" id="btn-close" aria-label="Schließen">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="content">
+      <h1>Zielort auswählen</h1>
+      <p class="hint">Erkannte USB-Sticks mit einem vorhandenen "PortableApps"-Ordner sind vorausgewählt.</p>
+      <div class="target-list" id="target-list"></div>
+
+      <div class="manual-path">
+        <label for="manual-path-input">…oder Pfad manuell eingeben</label>
+        <input type="text" id="manual-path-input" placeholder="z. B. D:\liforra-tool" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <label class="portable-row" for="portable-checkbox">
+        <input type="checkbox" id="portable-checkbox" checked />
+        <span class="portable-row-text">
+          <span class="portable-row-title">Portable</span>
+          <span class="portable-row-desc">Keine Verknüpfung im Startmenü, kein Eintrag in "Apps &amp; Features" — nur Dateien, jederzeit von Hand löschbar.</span>
+        </span>
+      </label>
+
+      <div class="spacer"></div>
+      <div class="status" id="status"></div>
+      <button class="install-btn" id="install-btn">Installieren</button>
+    </div>
+  </div>
+  <script src="main.js"></script>
+</body>
+</html>

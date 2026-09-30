@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "liforra-tool-installer",
+  "outputfilename": "install",
+  "frontend:install": "",
+  "frontend:build": "",
+  "author": {
+    "name": "liforra",
+    "email": "git@liforra.de"
+  }
+}

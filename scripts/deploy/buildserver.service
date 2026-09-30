@@ -1,0 +1,20 @@
+[Unit]
+Description=liforra-tool build/update server (lumatool.liforra.de)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/services/services/buildserver
+# Secrets live in a separate 600-permission file, not inlined here — this
+# unit is otherwise world-readable like the other user services on this
+# host, and the publish token in particular can push a build every
+# deployed client will auto-download and run, so it gets the extra step.
+EnvironmentFile=/opt/services/services/buildserver/env
+Environment=BUILDSERVER_DATA_DIR=/opt/services/services/buildserver/data
+Environment=BUILDSERVER_LISTEN_ADDR=127.0.0.1:8834
+ExecStart=/opt/services/services/buildserver/buildserver
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

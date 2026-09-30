@@ -1,0 +1,24 @@
+package config
+
+// Copy this file to config.go (gitignored) and fill in real values before building.
+// See GLPI Setup -> OAuth clients (for ClientID/ClientSecret) and
+// Setup -> General -> API (for the v1 App-Token).
+
+const (
+	AppName = "liforra-tool"
+
+	GLPIBaseURL       = "https://glpi.example.org"
+	OAuthClientID     = ""
+	OAuthClientSecret = ""
+	V1AppToken        = ""
+
+	DefaultUpdateServerURL = "https://lumatool.example.org"
+	DefaultAutoUpdate      = true
+)
+
+// See config.go's comment — DownloadToken is ldflags-injected at build time
+// from internal/config/downloadtoken.txt, never a source literal.
+var (
+	AppVersion    = "dev"
+	DownloadToken = ""
+)
