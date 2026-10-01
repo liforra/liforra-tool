@@ -1,6 +1,6 @@
 import './style.css';
 import {Quit, WindowMinimise, WindowToggleMaximise} from '../wailsjs/runtime/runtime';
-import {TryResumeSession, GetAppName} from '../wailsjs/go/main/App';
+import {TryResumeSession, GetAppName, Logout} from '../wailsjs/go/main/App';
 import {renderLoginScreen} from './screens/login';
 import {renderDeviceIntake} from './screens/deviceIntake';
 import {renderReview} from './screens/review';
@@ -49,6 +49,7 @@ app.innerHTML = `
       <div class="titlebar-menu" id="titlebar-menu" role="menu" hidden>
         <button class="titlebar-menu-item" id="menu-settings" role="menuitem"></button>
         <button class="titlebar-menu-item" id="menu-about" role="menuitem"></button>
+        <button class="titlebar-menu-item" id="menu-logout" role="menuitem" hidden></button>
       </div>
       <button class="titlebar-btn" id="btn-minimise">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
@@ -77,6 +78,7 @@ function applyChromeText() {
   label('#btn-close', 'common.close');
   document.querySelector('#menu-settings')!.textContent = t('menu.settings');
   document.querySelector('#menu-about')!.textContent = t('menu.about');
+  document.querySelector('#menu-logout')!.textContent = t('menu.logout');
   for (const tab of TABS) {
     const btn = document.querySelector(`#tab-${tab.id}`)!;
     btn.setAttribute('aria-label', t(tab.label));
@@ -161,6 +163,7 @@ function enableTabs() {
 function showIntake(asUser: string) {
   currentUser = asUser;
   enableTabs();
+  document.querySelector<HTMLButtonElement>('#menu-logout')!.hidden = false;
   setTab(activeTab);
 }
 
@@ -224,6 +227,17 @@ document.querySelector('#menu-settings')!.addEventListener('click', () => {
 document.querySelector('#menu-about')!.addEventListener('click', () => {
   setMenuOpen(false);
   showAbout();
+});
+document.querySelector('#menu-logout')!.addEventListener('click', () => {
+  setMenuOpen(false);
+  Logout().then(() => {
+    currentUser = '';
+    views.forEach((el) => el.remove());
+    views.clear();
+    tabbar.querySelectorAll<HTMLButtonElement>('.tabbar-btn').forEach((btn) => (btn.disabled = true));
+    document.querySelector<HTMLButtonElement>('#menu-logout')!.hidden = true;
+    showLogin();
+  });
 });
 
 // The hardware scan needs no GLPI session — start it now so "Neues Gerät"

@@ -136,6 +136,10 @@ body {
   outline-offset: -2px;
 }
 
+.titlebar-menu-item[hidden] {
+  display: none;
+}
+
 .titlebar-btn {
   appearance: none;
   -webkit-appearance: none;
