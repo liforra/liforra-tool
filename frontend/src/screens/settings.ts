@@ -8,6 +8,7 @@ import {
   GetUpdateServerURL,
   SetUpdateServerURL,
   CheckForUpdatesNow,
+  GetActiveProfile,
 } from '../../wailsjs/go/main/App';
 import {t, type Key} from '../i18n';
 
@@ -43,6 +44,11 @@ export function renderSettings(content: HTMLElement, onBack: () => void) {
         <button class="submit-btn submit-btn--inline submit-btn--secondary" id="btn-settings-back">${t('common.back')}</button>
       </div>
 
+      <section class="card">
+        <h3 class="card-title">${t('settings.glpiAccount.title')}</h3>
+        <p class="muted" id="settings-active-profile">${t('settings.glpiAccount.loading')}</p>
+      </section>
+
       <section class="card stack">
         ${toggles
           .map(
@@ -72,6 +78,14 @@ export function renderSettings(content: HTMLElement, onBack: () => void) {
 
   const settingsError = content.querySelector<HTMLParagraphElement>('#settings-error')!;
   content.querySelector('#btn-settings-back')!.addEventListener('click', onBack);
+
+  const activeProfileEl = content.querySelector<HTMLParagraphElement>('#settings-active-profile')!;
+  GetActiveProfile()
+    .then((name) => (activeProfileEl.textContent = t('settings.glpiAccount.profile', {profile: name})))
+    .catch((err) => {
+      activeProfileEl.textContent = t('settings.glpiAccount.unavailable');
+      console.error(err);
+    });
 
   const serverUrlInput = content.querySelector<HTMLInputElement>('#settings-update-server')!;
   GetUpdateServerURL()

@@ -10,6 +10,7 @@ import {renderUpdateIndicator, renderVersionBrowser} from './screens/updatePanel
 import {renderLanguage} from './screens/language';
 import {renderAbout} from './screens/about';
 import {renderDeviceCheck} from './screens/deviceCheck';
+import {choiceDialog} from './screens/dialog';
 import {startScan} from './scan';
 import {onLanguageChange, t, type Key} from './i18n';
 
@@ -250,8 +251,26 @@ TryResumeSession()
   .then((result) => {
     if (result.success && result.asUser) {
       showIntake(result.asUser);
+      if (result.limitedAccess) warnLimitedAccess();
     } else {
       showLogin();
     }
   })
   .catch(() => showLogin());
+
+// The session resumed read-only (v2) access but couldn't restore its v1
+// session — every write (creating/editing a device, the "nicht in GLPI"
+// catalog check) silently fails until logging in again with the password.
+// This used to be invisible; see app.go's LoginResult.LimitedAccess.
+function warnLimitedAccess() {
+  choiceDialog({
+    title: t('session.limited.title'),
+    bodyHtml: `<p class="muted">${t('session.limited.body')}</p>`,
+    choices: [
+      {key: 'later', label: t('session.limited.later')},
+      {key: 'relogin', label: t('session.limited.relogin'), primary: true},
+    ],
+  }).then((key) => {
+    if (key === 'relogin') document.querySelector<HTMLButtonElement>('#menu-logout')!.click();
+  });
+}

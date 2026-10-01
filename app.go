@@ -51,6 +51,12 @@ type LoginResult struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
 	AsUser  string `json:"asUser,omitempty"`
+	// LimitedAccess is true when the session resumed with v2 (read) access
+	// but failed to restore its v1 session — every write (creating/editing
+	// a device, checking GLPI's catalogs) needs v1 and will fail with no
+	// visible reason until the technician logs in again with their
+	// password. See TryResumeSession.
+	LimitedAccess bool `json:"limitedAccess,omitempty"`
 }
 
 // Login authenticates against GLPI with the given technician credentials.
@@ -93,12 +99,18 @@ func (a *App) TryResumeSession() LoginResult {
 		return LoginResult{Success: false}
 	}
 
+	v1OK := false
 	if saved.Password != "" {
 		if v1tok, err := a.glpi.InitV1Session(a.ctx, saved.Username, saved.Password); err == nil {
 			sess.V1SessionToken = v1tok
+			v1OK = true
 		}
 		// If this fails (e.g. password changed GLPI-side), we still have
 		// v2 access — just not v1 — rather than failing the whole resume.
+		// This used to be silent: the technician stayed "logged in" with
+		// every write failing for no visible reason (every create/edit/
+		// check-GLPI call requires v1) until they happened to log out and
+		// back in. LimitedAccess below is what fixes that.
 	}
 
 	a.session = sess
@@ -110,7 +122,7 @@ func (a *App) TryResumeSession() LoginResult {
 		RefreshToken: sess.RefreshToken,
 	})
 
-	return LoginResult{Success: true, AsUser: saved.Username}
+	return LoginResult{Success: true, AsUser: saved.Username, LimitedAccess: !v1OK}
 }
 
 // IsLoggedIn reports whether a session is currently held.
@@ -139,6 +151,18 @@ func (a *App) ScanUSBDrive(path string) ([]usbscan.FoundFile, error) {
 // USB stick right after, without risking a half-written file.
 func (a *App) EjectDrive(path string) error {
 	return usbscan.EjectDrive(path)
+}
+
+// GetActiveProfile returns the name of the currently active GLPI profile
+// (e.g. "Self-Service", "Technician") for display — see
+// glpi.GetActiveProfileName for why this matters: a technician with
+// multiple GLPI profiles may be logged into one without asset-write rights
+// without any other indication of why writes are failing.
+func (a *App) GetActiveProfile() (string, error) {
+	if err := a.requireV1Session(); err != nil {
+		return "", err
+	}
+	return a.glpi.GetActiveProfileName(a.ctx, a.session)
 }
 
 // FindComputerBySerial looks up a GLPI Computer by serial number. Read-only.

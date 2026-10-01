@@ -159,10 +159,48 @@ func (c *Client) InitV1Session(ctx context.Context, username, password string) (
 	return c.initV1Session(ctx, username, password)
 }
 
+// v1FullSessionResponse is getFullSession's shape as GLPI's own apirest.md
+// documents it. ActiveProfile in particular is NOT yet confirmed against a
+// real response (unlike most of this package's GLPI field assumptions) —
+// treat the field name as a strong first draft, same caveat as write.go,
+// until checked live against an account with more than one profile.
 type v1FullSessionResponse struct {
 	Session struct {
-		GLPIID int `json:"glpiID"`
+		GLPIID        int `json:"glpiID"`
+		ActiveProfile struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"glpiactiveprofile"`
 	} `json:"session"`
+}
+
+func (c *Client) fetchFullSession(ctx context.Context, sess *Session) (*v1FullSessionResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api.php/v1/getFullSession", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("App-Token", c.V1AppToken)
+	req.Header.Set("Session-Token", sess.V1SessionToken)
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var full v1FullSessionResponse
+	if err := json.Unmarshal(body, &full); err != nil {
+		return nil, fmt.Errorf("unexpected response: %s", string(body))
+	}
+	return &full, nil
 }
 
 // GetCurrentUserID returns the numeric GLPI user id behind the current v1
@@ -171,35 +209,34 @@ type v1FullSessionResponse struct {
 // the technician looking up their own id. Cache the result on
 // Session.UserID rather than calling this every time.
 func (c *Client) GetCurrentUserID(ctx context.Context, sess *Session) (int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api.php/v1/getFullSession", nil)
+	full, err := c.fetchFullSession(ctx, sess)
 	if err != nil {
 		return 0, err
-	}
-	req.Header.Set("App-Token", c.V1AppToken)
-	req.Header.Set("Session-Token", sess.V1SessionToken)
-
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var full v1FullSessionResponse
-	if err := json.Unmarshal(body, &full); err != nil {
-		return 0, fmt.Errorf("unexpected response: %s", string(body))
 	}
 	if full.Session.GLPIID == 0 {
 		return 0, fmt.Errorf("no glpiID in session response")
 	}
 	return full.Session.GLPIID, nil
+}
+
+// GetActiveProfileName returns the name of the GLPI profile currently
+// active for this session (e.g. "Self-Service", "Technician",
+// "Super-Admin") — surfaced in the app so a technician who can create
+// devices on the GLPI website but not here has an immediate, concrete thing
+// to check: GLPI logs a multi-profile account into whichever profile is
+// its default, which may not be the one with asset-write rights, and
+// nothing about that is visible from a plain login. This app never
+// switches profiles on its own (see GLPI's changeActiveProfile endpoint for
+// that, not implemented here) — it only reports what's currently active.
+func (c *Client) GetActiveProfileName(ctx context.Context, sess *Session) (string, error) {
+	full, err := c.fetchFullSession(ctx, sess)
+	if err != nil {
+		return "", err
+	}
+	if full.Session.ActiveProfile.Name == "" {
+		return "", fmt.Errorf("no active profile in session response")
+	}
+	return full.Session.ActiveProfile.Name, nil
 }
 
 func (c *Client) initV1Session(ctx context.Context, username, password string) (string, error) {

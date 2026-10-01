@@ -21,6 +21,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"liforra-tool/internal/config"
+	"liforra-tool/internal/installlogic"
 	"liforra-tool/internal/sessionstore"
 )
 
@@ -63,7 +64,31 @@ type Credentials struct {
 	SavedAt      time.Time `json:"savedAt"`
 }
 
+// portableDir returns the directory config.toml belongs in when this binary
+// was installed "portable" (see cmd/installer) — the entire point of that
+// install mode is that the USB stick carries its own state from PC to PC,
+// which only works if the config lives next to the exe, not in whatever
+// machine happens to be running it. Returns ("", false) for anything else:
+// installed non-portable (registered in Start Menu/registry), or just run
+// directly with no install manifest at all (dev builds, `wails build`
+// output) — those fall back to the host's per-user config dir below.
+func portableDir() (string, bool) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	m, err := installlogic.LoadManifest(filepath.Dir(exe))
+	if err != nil || !m.Portable {
+		return "", false
+	}
+	return filepath.Dir(exe), true
+}
+
 func dir() (string, error) {
+	if d, ok := portableDir(); ok {
+		return d, nil
+	}
+
 	d, err := os.UserConfigDir()
 	if err != nil {
 		return "", err

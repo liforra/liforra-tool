@@ -7,8 +7,28 @@ import (
 	"testing"
 	"time"
 
+	"liforra-tool/internal/installlogic"
 	"liforra-tool/internal/sessionstore"
 )
+
+// dropPortableManifest writes a minimal install manifest next to the
+// running test binary's own exe path (os.Executable() inside `go test` is
+// the compiled test binary — a real, writable path) and removes it when
+// the test ends, so portableDir() has something real to find rather than
+// needing os.Executable() itself to be mocked.
+func dropPortableManifest(t *testing.T, portable bool) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(filepath.Dir(exe), installlogic.ManifestName)
+	data := []byte(`{"installDir":"x","files":[],"portable":` + map[bool]string{true: "true", false: "false"}[portable] + `}`)
+	if err := os.WriteFile(p, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(p) })
+}
 
 // sandboxConfigDir points os.UserConfigDir() (AppData on Windows, XDG_CONFIG_HOME
 // elsewhere) at a fresh temp directory, so each test gets its own isolated
@@ -181,5 +201,53 @@ func TestLoad_NoOldFilesMeansPlainDefaults(t *testing.T) {
 	}
 	if creds != nil {
 		t.Errorf("LoadCredentials() = %+v, want nil", creds)
+	}
+}
+
+func TestPortableDir_FalseWithNoManifest(t *testing.T) {
+	// No manifest dropped — the ordinary `go test` case, and the ordinary
+	// case for a dev build / `wails build` output run directly.
+	if _, ok := portableDir(); ok {
+		t.Error("portableDir() = _, true, want false with no install manifest present")
+	}
+}
+
+func TestPortableDir_FalseWhenManifestSaysNotPortable(t *testing.T) {
+	dropPortableManifest(t, false)
+	if _, ok := portableDir(); ok {
+		t.Error("portableDir() = _, true, want false when the manifest says portable=false")
+	}
+}
+
+func TestPortableDir_TrueAndConfigLivesNextToExeWhenPortable(t *testing.T) {
+	// Deliberately NOT sandboxed via AppData/XDG_CONFIG_HOME — the whole
+	// point is confirming this ignores the host's config dir entirely.
+	dropPortableManifest(t, true)
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDir := filepath.Dir(exe)
+
+	d, ok := portableDir()
+	if !ok || d != wantDir {
+		t.Fatalf("portableDir() = %q, %v, want %q, true", d, ok, wantDir)
+	}
+
+	p, err := configPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(p) != wantDir {
+		t.Errorf("configPath() = %q, want it inside %q", p, wantDir)
+	}
+	t.Cleanup(func() { _ = os.Remove(p) })
+
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Errorf("config.toml was not created next to the exe: %v", err)
 	}
 }

@@ -634,7 +634,8 @@ export function renderNewDevice(content: HTMLElement, asUser: string) {
         renderDone(created, createWarnings, generateTxt || hasSpecSheet(files));
       } catch (err) {
         console.error(err);
-        createError.textContent = created ? t('nd.err.finish') : t('nd.err.create');
+        const prefix = created ? t('nd.err.finish') : t('nd.err.create');
+        createError.textContent = `${prefix} (${String(err)})`;
         setBusy(null);
       }
     });
