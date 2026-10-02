@@ -162,13 +162,26 @@ func (c *Client) FindMissing(ctx context.Context, sess *Session, input FullDevic
 	return missing, nil
 }
 
-func (c *Client) resolveOrCreate(ctx context.Context, sess *Session, p plannedLookup) (int, error) {
+// resolveOrCreate looks up p in GLPI's catalog and, only when allowCreate is
+// true, creates it if nothing matched. allowCreate must reflect this app's
+// own "Administrator" setting (see app.go's GetAdministrator) — enforced
+// *here*, not just as an earlier, separate pre-flight check (FindMissing)
+// that a caller might skip or whose result might have gone stale by the
+// time this runs. Without this, a non-admin technician's create attempt
+// would reach GLPI's own create-dropdown-entry call, which almost always
+// 403s for an account that only has asset-write (not catalog-admin)
+// rights — a real GLPI permissions error, but one this app should refuse
+// to even attempt, with its own clear message, rather than let happen.
+func (c *Client) resolveOrCreate(ctx context.Context, sess *Session, p plannedLookup, allowCreate bool) (int, error) {
 	if p.name == "" {
 		return 0, nil
 	}
 	id, err := c.findBestMatch(ctx, sess, p.itemtype, p.field, p.name, p.hints)
 	if err != nil || id != 0 {
 		return id, err
+	}
+	if !allowCreate {
+		return 0, fmt.Errorf("%q ist nicht in GLPI vorhanden — nur im Administrator-Modus kann es angelegt werden", p.name)
 	}
 	return c.createEntry(ctx, sess, p.itemtype, p.field, p.name)
 }
@@ -185,7 +198,7 @@ func (c *Client) resolveOrCreate(ctx context.Context, sess *Session, p plannedLo
 // and returned alongside the created Computer rather than aborting, since a
 // technician would rather have a Computer with 4 out of 5 components
 // entered — and fix the rest directly in GLPI — than nothing at all.
-func (c *Client) CreateFullComputer(ctx context.Context, sess *Session, input FullDeviceInput) (*Computer, []string, error) {
+func (c *Client) CreateFullComputer(ctx context.Context, sess *Session, input FullDeviceInput, admin bool) (*Computer, []string, error) {
 	lookups := map[string]plannedLookup{}
 	for _, p := range plannedLookups(input) {
 		lookups[p.key] = p
@@ -193,7 +206,7 @@ func (c *Client) CreateFullComputer(ctx context.Context, sess *Session, input Fu
 
 	ids := map[string]int{}
 	for _, key := range []string{"manufacturer", "model", "type"} {
-		id, err := c.resolveOrCreate(ctx, sess, lookups[key])
+		id, err := c.resolveOrCreate(ctx, sess, lookups[key], admin)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", lookups[key].kind, err)
 		}
@@ -220,7 +233,7 @@ func (c *Client) CreateFullComputer(ctx context.Context, sess *Session, input Fu
 
 	if osLookup := lookups["os"]; osLookup.name != "" {
 		attempt(osLookup, func() error {
-			return c.linkOperatingSystem(ctx, sess, computer.ID, osLookup, lookups["osVersion"])
+			return c.linkOperatingSystem(ctx, sess, computer.ID, osLookup, lookups["osVersion"], admin)
 		})
 	}
 
@@ -241,7 +254,7 @@ func (c *Client) CreateFullComputer(ctx context.Context, sess *Session, input Fu
 			continue
 		}
 		attempt(p, func() error {
-			return c.linkComponent(ctx, sess, computer.ID, p, comp.linkItemtype, comp.foreignKey)
+			return c.linkComponent(ctx, sess, computer.ID, p, comp.linkItemtype, comp.foreignKey, admin)
 		})
 	}
 
@@ -263,7 +276,7 @@ func (c *Client) CreateFullComputer(ctx context.Context, sess *Session, input Fu
 // live-verification history). Re-linking is intentionally left as a
 // follow-up once that read-back path is confirmed live, not silently
 // guessed at here.
-func (c *Client) UpdateFullComputer(ctx context.Context, sess *Session, computerID int, input FullDeviceInput) (*Computer, []string, error) {
+func (c *Client) UpdateFullComputer(ctx context.Context, sess *Session, computerID int, input FullDeviceInput, admin bool) (*Computer, []string, error) {
 	lookups := map[string]plannedLookup{}
 	for _, p := range plannedLookups(input) {
 		lookups[p.key] = p
@@ -271,7 +284,7 @@ func (c *Client) UpdateFullComputer(ctx context.Context, sess *Session, computer
 
 	ids := map[string]int{}
 	for _, key := range []string{"manufacturer", "model", "type"} {
-		id, err := c.resolveOrCreate(ctx, sess, lookups[key])
+		id, err := c.resolveOrCreate(ctx, sess, lookups[key], admin)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", lookups[key].kind, err)
 		}
@@ -293,8 +306,8 @@ func (c *Client) UpdateFullComputer(ctx context.Context, sess *Session, computer
 	return computer, warnings, nil
 }
 
-func (c *Client) linkComponent(ctx context.Context, sess *Session, computerID int, p plannedLookup, linkItemtype, foreignKey string) error {
-	id, err := c.resolveOrCreate(ctx, sess, p)
+func (c *Client) linkComponent(ctx context.Context, sess *Session, computerID int, p plannedLookup, linkItemtype, foreignKey string, admin bool) error {
+	id, err := c.resolveOrCreate(ctx, sess, p, admin)
 	if err != nil || id == 0 {
 		return err
 	}
@@ -305,13 +318,13 @@ func (c *Client) linkComponent(ctx context.Context, sess *Session, computerID in
 // OperatingSystemVersion) and links both to the Computer via
 // Item_OperatingSystem — GLPI keeps OS data on that link table, not on the
 // Computer record itself.
-func (c *Client) linkOperatingSystem(ctx context.Context, sess *Session, computerID int, osLookup, version plannedLookup) error {
-	osID, err := c.resolveOrCreate(ctx, sess, osLookup)
+func (c *Client) linkOperatingSystem(ctx context.Context, sess *Session, computerID int, osLookup, version plannedLookup, admin bool) error {
+	osID, err := c.resolveOrCreate(ctx, sess, osLookup, admin)
 	if err != nil || osID == 0 {
 		return err
 	}
 	fields := map[string]any{"items_id": computerID, "itemtype": "Computer", "operatingsystems_id": osID}
-	versionID, err := c.resolveOrCreate(ctx, sess, version)
+	versionID, err := c.resolveOrCreate(ctx, sess, version, admin)
 	if err != nil {
 		return err
 	}

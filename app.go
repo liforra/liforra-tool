@@ -250,7 +250,7 @@ func (a *App) CreateFullComputer(input NewDeviceInput) (CreateDeviceResult, erro
 		}
 	}
 
-	computer, warnings, err := a.glpi.CreateFullComputer(a.ctx, a.session, full)
+	computer, warnings, err := a.glpi.CreateFullComputer(a.ctx, a.session, full, a.GetAdministrator())
 	if err != nil {
 		return CreateDeviceResult{}, fmt.Errorf("gerät konnte nicht angelegt werden: %w", err)
 	}
@@ -277,7 +277,7 @@ func (a *App) UpdateFullComputer(computerID int, input NewDeviceInput) (CreateDe
 		}
 	}
 
-	computer, warnings, err := a.glpi.UpdateFullComputer(a.ctx, a.session, computerID, full)
+	computer, warnings, err := a.glpi.UpdateFullComputer(a.ctx, a.session, computerID, full, a.GetAdministrator())
 	if err != nil {
 		return CreateDeviceResult{}, fmt.Errorf("gerät konnte nicht aktualisiert werden: %w", err)
 	}

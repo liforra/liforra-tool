@@ -65,23 +65,42 @@ type Credentials struct {
 }
 
 // portableDir returns the directory config.toml belongs in when this binary
-// was installed "portable" (see cmd/installer) — the entire point of that
-// install mode is that the USB stick carries its own state from PC to PC,
-// which only works if the config lives next to the exe, not in whatever
-// machine happens to be running it. Returns ("", false) for anything else:
-// installed non-portable (registered in Start Menu/registry), or just run
-// directly with no install manifest at all (dev builds, `wails build`
-// output) — those fall back to the host's per-user config dir below.
+// counts as "portable" (see cmd/installer) — the entire point of that mode
+// is that the USB stick carries its own state from PC to PC, which only
+// works if the config lives next to the exe, not in whatever machine
+// happens to be running it.
+//
+// Two ways to count as portable:
+//  1. An install manifest next to the exe explicitly says so (install.exe's
+//     doing — see internal/installlogic). This is authoritative either way:
+//     a manifest saying portable=false is honored even on a removable
+//     drive, since that was an explicit choice at install time.
+//  2. No manifest at all (a plain copy of the exe, not run through
+//     install.exe — dragged onto a stick by hand, or a dev build someone
+//     carries around) *and* the exe is sitting on a removable drive right
+//     now. This used to fall back to the host PC's own config dir, which
+//     silently broke exactly the "same stick, different PC" use case this
+//     whole mechanism exists for — confirmed live 2026-10-02 (a loose
+//     liforra-tool.exe on a USB stick, no manifest, saved a technician's
+//     login to the dev machine's AppData instead of the stick).
+//
+// A plain copy on a *fixed* drive (no manifest, not removable — a dev
+// build's output directory, say) still falls back to the host's per-user
+// config dir below, same as always.
 func portableDir() (string, bool) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", false
 	}
-	m, err := installlogic.LoadManifest(filepath.Dir(exe))
-	if err != nil || !m.Portable {
-		return "", false
+	exeDir := filepath.Dir(exe)
+
+	if m, err := installlogic.LoadManifest(exeDir); err == nil {
+		return exeDir, m.Portable
 	}
-	return filepath.Dir(exe), true
+	if isRemovableDrive(exeDir) {
+		return exeDir, true
+	}
+	return "", false
 }
 
 func dir() (string, error) {
