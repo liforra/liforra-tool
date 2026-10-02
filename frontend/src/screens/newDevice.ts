@@ -12,15 +12,17 @@ import {
   FinishDevice,
   GenerateSpecSheetTXT,
   GetAdministrator,
+  ListCatalogNames,
   LookupLenovoSpecs,
   SaveTextFile,
   UpdateFullComputer,
 } from '../../wailsjs/go/main/App';
-import {glpi, main} from '../../wailsjs/go/models';
+import {glpi, main, specsheet} from '../../wailsjs/go/models';
 import type {hwinfo, usbscan} from '../../wailsjs/go/models';
+import {attachCombobox} from '../combobox';
 import {escapeHtml} from '../html';
 import {askMissingTxtInfo, choiceDialog} from './dialog';
-import {isLenovo, renderSpecSheetForm, specDefaults, type RequiredKey} from './specSheet';
+import {cleanCpu, cpuSpeed, isLenovo, renderSpecSheetForm, specDefaults, type RequiredKey} from './specSheet';
 import {chooseUSBFiles, hasSpecSheet, specSheetAttachment, toAttachments} from './attachments';
 import {latestScan, startScan} from '../scan';
 import {t} from '../i18n';
@@ -139,7 +141,7 @@ const deviceFieldFor: Partial<Record<RequiredKey, string>> = {
   marke: 'f-manufacturer',
   modell: 'f-model',
   prozessor: 'f-cpu',
-  prozessorgeschwindigkeit: 'f-cpu',
+  prozessorgeschwindigkeit: 'f-cpu-speed',
   ram: 'mem-cap-0',
   ramGeschwindigkeit: 'mem-speed-0',
   ssd: 'disk-cap-0',
@@ -347,7 +349,10 @@ export function renderNewDevice(content: HTMLElement, asUser: string) {
 
         <div class="card component-card" id="cpu-card">
           <h3 class="card-title">${icons.cpu} ${t('nd.cpu')}</h3>
-          ${field(t('nd.model'), 'f-cpu', info.cpuModel)}
+          <div class="grid-2">
+            ${field(t('nd.model'), 'f-cpu', cleanCpu(info.cpuModel))}
+            ${field(t('nd.speedGHz'), 'f-cpu-speed', cpuSpeed(info.cpuModel, info.cpuMaxClockMHz))}
+          </div>
         </div>
 
         ${info.memory && info.memory.length ? componentCard('memory', t('nd.memory'), memoryFields, 'memory-card') : ''}
@@ -414,6 +419,94 @@ export function renderNewDevice(content: HTMLElement, asUser: string) {
     const specCard = $<HTMLDetailsElement>('spec-card')!;
     const specStatus = $<HTMLSpanElement>('spec-status')!;
 
+    // Type-to-filter suggestions from GLPI's own catalog, on every field
+    // that resolves against one — still plain text underneath, so a
+    // technician can type a value GLPI doesn't have yet and it's picked up
+    // by the existing "nicht in GLPI" flow below, same as always.
+    const catalogFields: {id: string; itemtype: string}[] = [
+      {id: 'f-manufacturer', itemtype: 'Manufacturer'},
+      {id: 'f-model', itemtype: 'ComputerModel'},
+      {id: 'f-type', itemtype: 'ComputerType'},
+      {id: 'f-osname', itemtype: 'OperatingSystem'},
+      {id: 'f-osversion', itemtype: 'OperatingSystemVersion'},
+      {id: 'f-cpu', itemtype: 'DeviceProcessor'},
+      {id: 'f-gpu', itemtype: 'DeviceGraphicCard'},
+    ];
+    for (const cf of catalogFields) {
+      const el = $<HTMLInputElement>(cf.id);
+      if (el) attachCombobox(el, () => ListCatalogNames(cf.itemtype));
+    }
+
+    // Capacity/speed/DDR-type fields aren't their own GLPI dropdown — GLPI
+    // only stores the *composed* designation ("SO-DIMM DDR4 4GB 2133MHz",
+    // "M.2 SATA SSD 256GB"), the same strings diskDesignation/
+    // memoryDesignation build server-side (see internal/glpi/components.go).
+    // Pull those apart client-side instead of adding more backend surface,
+    // so suggestions still reflect whatever this org's catalog actually has
+    // rather than a guessed list of "common" values.
+    //
+    // Fetched lazily, memoized on first actual use (same as every other
+    // combobox here) rather than eagerly at render time — an eager fetch
+    // used to fire before the session was necessarily ready, failing
+    // silently with nothing to show and no error either, unlike every
+    // lazy (focus-triggered) field which worked fine.
+    let memoryTokensPromise: Promise<{ddrTypes: string[]; capacities: string[]; speeds: string[]}> | null = null;
+    function memoryTokens() {
+      if (!memoryTokensPromise) {
+        memoryTokensPromise = ListCatalogNames('DeviceMemory').then((designations) => {
+          const ddrTypes = new Set<string>();
+          const capacities = new Set<string>();
+          const speeds = new Set<string>();
+          // Matched against the whole string, with optional whitespace
+          // between number and unit — years of hand-typed GLPI entries mix
+          // "4GB" and "8 GB" freely (see this app's own match.go package
+          // doc), so a strict per-word split missed most real entries.
+          for (const d of designations) {
+            const ddr = d.match(/\b(ddr|lpddr)\d\w*\b/i);
+            if (ddr) ddrTypes.add(ddr[0].toUpperCase());
+            const cap = d.match(/(\d+)\s*gb\b/i);
+            if (cap) capacities.add(cap[1]);
+            const spd = d.match(/(\d+)\s*mhz\b/i);
+            if (spd) speeds.add(spd[1]);
+          }
+          return {
+            ddrTypes: [...ddrTypes].sort(),
+            capacities: [...capacities].sort((a, b) => Number(a) - Number(b)),
+            speeds: [...speeds].sort((a, b) => Number(a) - Number(b)),
+          };
+        });
+      }
+      return memoryTokensPromise;
+    }
+
+    let diskCapacitiesPromise: Promise<string[]> | null = null;
+    function diskCapacities() {
+      if (!diskCapacitiesPromise) {
+        diskCapacitiesPromise = ListCatalogNames('DeviceHardDrive').then((designations) => {
+          const caps = new Set<string>();
+          for (const d of designations) {
+            const m = d.match(/(\d+)\s*(GB|TB)\b/i);
+            if (m) caps.add(String(Number(m[1]) * (m[2].toUpperCase() === 'TB' ? 1000 : 1)));
+          }
+          return [...caps].sort((a, b) => Number(a) - Number(b));
+        });
+      }
+      return diskCapacitiesPromise;
+    }
+
+    (info.memory ?? []).forEach((_, i) => {
+      const cap = $<HTMLInputElement>(`mem-cap-${i}`);
+      const type = $<HTMLInputElement>(`mem-type-${i}`);
+      const speed = $<HTMLInputElement>(`mem-speed-${i}`);
+      if (cap) attachCombobox(cap, async () => (await memoryTokens()).capacities);
+      if (type) attachCombobox(type, async () => (await memoryTokens()).ddrTypes);
+      if (speed) attachCombobox(speed, async () => (await memoryTokens()).speeds);
+    });
+    (info.disks ?? []).forEach((_, i) => {
+      const cap = $<HTMLInputElement>(`disk-cap-${i}`);
+      if (cap) attachCombobox(cap, diskCapacities);
+    });
+
     function collectInput(): main.NewDeviceInput {
       return main.NewDeviceInput.createFrom({
         name: val('f-name'),
@@ -455,7 +548,17 @@ export function renderNewDevice(content: HTMLElement, asUser: string) {
           model: {name: input.model},
           type: {name: input.type},
         });
-      return specDefaults({computer: c, scan: {info, input}});
+      const base = specDefaults({computer: c, scan: {info, input}});
+      // specDefaults re-derives these from the raw scanned string, same as
+      // it always did — but the top-level CPU card now shows the cleaned
+      // model and the clock speed as two separate, directly editable
+      // fields, so whatever's actually in them wins over the re-derived
+      // guess (matters once the technician corrects either by hand).
+      return specsheet.Fields.createFrom({
+        ...base,
+        prozessor: val('f-cpu'),
+        prozessorgeschwindigkeit: val('f-cpu-speed'),
+      });
     }
 
     const specForm = renderSpecSheetForm($<HTMLDivElement>('spec-form')!, specBase(), false);

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -170,6 +171,31 @@ func (e namedEntry) label(field string) string {
 		return e.Designation
 	}
 	return e.Name
+}
+
+// ListCatalogNames returns every distinct value currently in one of GLPI's
+// hardware catalogs (Manufacturer/ComputerModel/ComputerType/
+// OperatingSystem/OperatingSystemVersion: field "name"; DeviceProcessor/
+// DeviceGraphicCard: field "designation") — read-only, powers the New
+// Device form's type-to-filter suggestions so a technician sees what
+// already exists instead of guessing at GLPI's exact spelling.
+func (c *Client) ListCatalogNames(ctx context.Context, sess *Session, itemtype, field string) ([]string, error) {
+	entries, err := c.listEntries(ctx, sess, itemtype, field, "")
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(entries))
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		v := e.label(field)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		names = append(names, v)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // ResolveByNameContains finds the first itemtype entry (e.g. "Group",

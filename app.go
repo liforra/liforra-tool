@@ -153,6 +153,31 @@ func (a *App) EjectDrive(path string) error {
 	return usbscan.EjectDrive(path)
 }
 
+// catalogFieldFor says which GLPI field ("name" vs "designation") holds the
+// label for each itemtype ListCatalogNames is ever called with — mirrors
+// plannedLookups' own field choices in internal/glpi/components.go.
+var catalogFieldFor = map[string]string{
+	"DeviceProcessor":   "designation",
+	"DeviceGraphicCard": "designation",
+	"DeviceMemory":      "designation",
+	"DeviceHardDrive":   "designation",
+}
+
+// ListCatalogNames returns every value already in one of GLPI's hardware
+// catalogs (Manufacturer, ComputerModel, ComputerType, OperatingSystem,
+// OperatingSystemVersion, DeviceProcessor, DeviceGraphicCard) — read-only,
+// feeds the New Device form's type-to-filter suggestions.
+func (a *App) ListCatalogNames(itemtype string) ([]string, error) {
+	if err := a.requireV1Session(); err != nil {
+		return nil, err
+	}
+	field := catalogFieldFor[itemtype]
+	if field == "" {
+		field = "name"
+	}
+	return a.glpi.ListCatalogNames(a.ctx, a.session, itemtype, field)
+}
+
 // GetActiveProfile returns the name of the currently active GLPI profile
 // (e.g. "Self-Service", "Technician") for display — see
 // glpi.GetActiveProfileName for why this matters: a technician with

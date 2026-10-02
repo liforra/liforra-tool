@@ -29,13 +29,17 @@ function cleanName(s: string): string {
 }
 
 // "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz" -> "Intel Core i5-1135G7"
-function cleanCpu(s: string): string {
+// Exported: the New Device form's top-level CPU card uses this too, to
+// split the raw scanned string into a GLPI-matchable model name plus a
+// separate speed field (see cpuSpeed below) — GLPI's own DeviceProcessor
+// catalog doesn't care about clock speed, only the TXT spec sheet does.
+export function cleanCpu(s: string): string {
   return cleanName(s.replace(/@.*$/, '').replace(/\bCPU\b/gi, '').replace(/^\s*\d+(st|nd|rd|th)\s+Gen\s+/i, ''));
 }
 
 // Base clock from the name ("... @ 2.50GHz"); WMI's max clock is only a
 // fallback since it may report turbo speed instead.
-function cpuSpeed(name: string, maxClockMHz?: number): string {
+export function cpuSpeed(name: string, maxClockMHz?: number): string {
   const m = /@\s*([\d.]+)\s*GHz/i.exec(name);
   if (m) return `${Number(m[1]).toFixed(2)} GHz`;
   return maxClockMHz ? `${(maxClockMHz / 1000).toFixed(2)} GHz` : '';

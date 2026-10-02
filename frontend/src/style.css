@@ -431,6 +431,54 @@ form.login-form {
   color: var(--plum-600);
 }
 
+.combobox-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.combobox-wrapper input {
+  width: 100%;
+}
+
+.combobox-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--plum-900);
+  border: 1px solid var(--plum-600);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(9, 5, 14, 0.5);
+  padding: 0.25rem;
+}
+
+.combobox-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--lilac-100);
+  font-size: 0.88rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.combobox-option:hover,
+.combobox-option--active {
+  background: var(--plum-800);
+}
+
+.combobox-error {
+  padding: 0.4rem 0.55rem;
+  font-size: 0.82rem;
+  color: var(--danger-400);
+}
+
 .field textarea,
 .field select {
   appearance: none;
